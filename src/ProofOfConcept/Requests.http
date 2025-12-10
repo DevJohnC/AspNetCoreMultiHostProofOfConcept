@@ -1,0 +1,10 @@
+### GET host application endpoint
+GET http://localhost:5153/
+
+### GET host app1 endpoint
+GET http://localhost:5153/app1/
+
+### GET host app2 endpoint
+GET http://localhost:5153/app2/
+
+###
