@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using ProofOfConcept;
 
 var builder = WebApplication.CreateBuilder();
 // replace Kestrel with a server that doesn't listen for any connections
@@ -62,21 +61,12 @@ class RoutingMiddleware : IMiddleware
     private static async Task RouteToApp(HttpContext callingContext, RouteTableEntry routeTableEntry)
     {
         var routedContextFactory = routeTableEntry.ServiceProvider.GetRequiredService<IHttpContextFactory>();
-
-        var httpContextFeatures = new HttpContextFeatures();
         
         var features = new FeatureCollection();
-        features.Set<IHttpRequestFeature>(httpContextFeatures);
-        features.Set<IQueryFeature>(httpContextFeatures);
-        features.Set<IFormFeature>(httpContextFeatures);
-        features.Set<IRequestCookiesFeature>(httpContextFeatures);
-        features.Set<IRouteValuesFeature>(httpContextFeatures);
-        features.Set<IRequestBodyPipeFeature>(httpContextFeatures);
+        CopyHttpRequestFeatures(callingContext.Features, features);
         var routedContext = routedContextFactory.Create(features);
         try
         {
-            CopyRequestProperties(callingContext.Request, routedContext.Request);
-            
             await using var scope = routeTableEntry.ServiceProvider.CreateAsyncScope();
             
             callingContext.RequestServices = scope.ServiceProvider;
@@ -91,36 +81,14 @@ class RoutingMiddleware : IMiddleware
         }
     }
 
-    private static void CopyRequestProperties(HttpRequest from, HttpRequest into)
+    private static void CopyHttpRequestFeatures(IFeatureCollection from, IFeatureCollection into)
     {
-        into.Method = from.Method;
-        into.Scheme = from.Scheme;
-        into.IsHttps = from.IsHttps;
-        into.Host = from.Host;
-        into.PathBase = from.PathBase;
-        into.Path = from.Path;
-        into.QueryString = from.QueryString;
-        into.Query = from.Query;
-        into.Protocol = from.Protocol;
-        into.Cookies = from.Cookies;
-        into.ContentLength = from.ContentLength;
-        into.ContentType = from.ContentType;
-        into.Body = from.Body;
-        into.RouteValues = from.RouteValues;
-        
-        // this will cause the form to be read, that should be made lazy
-        if (from.HasFormContentType)
-            into.Form = from.Form;
-
-        CopyHeaderValues(from.Headers, into.Headers);
-    }
-
-    private static void CopyHeaderValues(IHeaderDictionary from, IHeaderDictionary into)
-    {
-        foreach (var (key, values) in from)
-        {
-            into.Append(key, values);
-        }
+        into.Set(from.Get<IHttpRequestFeature>());
+        into.Set(from.Get<IQueryFeature>());
+        into.Set(from.Get<IFormFeature>());
+        into.Set(from.Get<IRequestCookiesFeature>());
+        into.Set(from.Get<IRouteValuesFeature>());
+        into.Set(from.Get<IRequestBodyPipeFeature>());
     }
 }
 
@@ -144,4 +112,23 @@ class RouteTableEntry
             FeatureCollection = applicationBuilder.ServerFeatures
         };
     }
+}
+
+class NullServer : IServer
+{
+    public void Dispose()
+    {
+    }
+
+    public Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken) where TContext : notnull
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public IFeatureCollection Features { get; } = new FeatureCollection();
 }
